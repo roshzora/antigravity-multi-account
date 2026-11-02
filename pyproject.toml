@@ -31,6 +31,7 @@ agm = "agm.cli:main"
 agy-multi = "agm.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/roshzora/antigravity-multi-account"
-Repository = "https://github.com/roshzora/antigravity-multi-account.git"
-Issues = "https://github.com/roshzora/antigravity-multi-account/issues"
+Homepage = "https://github.com/roshzxn1003/antigravity-multi-account"
+Repository = "https://github.com/roshzxn1003/antigravity-multi-account.git"
+Issues = "https://github.com/roshzxn1003/antigravity-multi-account/issues"
+

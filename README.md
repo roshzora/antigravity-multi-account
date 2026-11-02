@@ -56,7 +56,7 @@ flowchart TD
 ### 1. Installation
 Clone the repository and run the automated installer:
 ```bash
-git clone https://github.com/roshzora/antigravity-multi-account.git ~/Projects/antigravity-multi-account
+git clone https://github.com/roshzxn1003/antigravity-multi-account.git ~/Projects/antigravity-multi-account
 cd ~/Projects/antigravity-multi-account
 ./install.sh
 ```
