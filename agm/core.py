@@ -372,11 +372,86 @@ def get_profile_env(name: str) -> Dict[str, str]:
     return env
 
 
+def setup_oauth_interceptor() -> Path:
+    """
+    Create an xdg-open wrapper that forces Google OAuth account selection
+    and opens in Incognito mode so Google does not auto-login to an existing account.
+    """
+    bin_dir = CONFIG_DIR / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    xdg_open_script = bin_dir / "xdg-open"
+
+    content = """#!/usr/bin/env bash
+# Antigravity Multi-Account OAuth Interceptor
+URL="$1"
+
+if [[ "$URL" == *"accounts.google.com"* ]]; then
+    # 1. Force account selection parameter so Google always shows the account chooser
+    if [[ "$URL" != *"prompt="* ]]; then
+        if [[ "$URL" == *"?"* ]]; then
+            URL="${URL}&prompt=select_account"
+        else
+            URL="${URL}?prompt=select_account"
+        fi
+    fi
+
+    # 2. Print clear instructions in terminal
+    echo "" >&2
+    echo "================================================================================" >&2
+    echo "  ANTIGRAVITY GOOGLE OAUTH SIGN-IN" >&2
+    echo "================================================================================" >&2
+    echo "  Opening Incognito / Account Selection window..." >&2
+    echo "" >&2
+    echo "  Direct OAuth URL:" >&2
+    echo "  $URL" >&2
+    echo "" >&2
+    echo "  IMPORTANT:" >&2
+    echo "  Sign in with your OTHER / SECOND Google account (not your default account)!" >&2
+    echo "  If the browser didn't open or opened the wrong account, copy and paste" >&2
+    echo "  the link above into an Incognito/Private window or another browser." >&2
+    echo "================================================================================" >&2
+    echo "" >&2
+
+    # 3. Open in Incognito/Private mode
+    if command -v google-chrome &>/dev/null; then
+        google-chrome --incognito "$URL" >/dev/null 2>&1 &
+        exit 0
+    elif command -v google-chrome-stable &>/dev/null; then
+        google-chrome-stable --incognito "$URL" >/dev/null 2>&1 &
+        exit 0
+    elif command -v brave-browser &>/dev/null; then
+        brave-browser --incognito "$URL" >/dev/null 2>&1 &
+        exit 0
+    elif command -v firefox &>/dev/null; then
+        firefox --private-window "$URL" >/dev/null 2>&1 &
+        exit 0
+    fi
+fi
+
+# Fallback to system xdg-open
+if [ -x /usr/bin/xdg-open ]; then
+    exec /usr/bin/xdg-open "$@"
+elif [ -x /bin/xdg-open ]; then
+    exec /bin/xdg-open "$@"
+else
+    echo "Open URL in your browser: $URL" >&2
+fi
+"""
+    with open(xdg_open_script, "w", encoding="utf-8") as f:
+        f.write(content)
+    try:
+        os.chmod(xdg_open_script, 0o755)
+    except OSError:
+        pass
+    return bin_dir
+
+
 def run_profile_command(
     name: str,
     cmd_args: List[str],
     cwd: Optional[str] = None,
     stream_output: bool = True,
+    use_interceptor: bool = False,
 ) -> int:
     """Run an arbitrary command under the profile's environment."""
     profile_dir = get_profile_dir(name)
@@ -384,6 +459,10 @@ def run_profile_command(
         setup_shadow_home(profile_dir)
 
     env = get_profile_env(name)
+
+    if use_interceptor:
+        interceptor_bin = setup_oauth_interceptor()
+        env["PATH"] = f"{interceptor_bin}:{env.get('PATH', '')}"
 
     cfg = load_config()
     if name in cfg.get("profiles", {}):
@@ -402,3 +481,4 @@ def run_profile_command(
         )
         update_profile_info(name)
         return proc.returncode
+

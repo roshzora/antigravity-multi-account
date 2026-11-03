@@ -90,6 +90,25 @@ def cmd_add(args: argparse.Namespace):
 
     token_file = profile_dir / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
 
+    if getattr(args, "token_file", None):
+        import shutil
+        from pathlib import Path
+        src_path = Path(args.token_file).expanduser().resolve()
+
+        if not src_path.exists():
+            print(colorize(f"\nError: Token file '{args.token_file}' not found.", RED + BOLD))
+            sys.exit(1)
+        shutil.copy2(src_path, token_file)
+        try:
+            os.chmod(token_file, 0o600)
+        except OSError:
+            pass
+        core.update_profile_info(name)
+        meta = core.inspect_token_file(token_file)
+        print(colorize(f"\n✔ Successfully imported token for: {meta.email}", GREEN + BOLD))
+        print(f"✔ Ready for simultaneous use! Launch anytime via: {colorize('agy @' + name, CYAN + BOLD)}")
+        return
+
     if args.copy_from:
         core.update_profile_info(name)
         meta = core.inspect_token_file(token_file)
@@ -103,11 +122,11 @@ def cmd_add(args: argparse.Namespace):
         return
 
     print_step(2, 3, "Google OAuth Authentication")
-    print("  Next, Antigravity will launch its Google OAuth consent flow.")
-    print("  1. A browser window will open automatically.")
-    print(f"  2. Sign in with your {BOLD}secondary Google account{RESET}.")
-    print("  3. Grant the requested permissions for Antigravity.")
-    print(f"\nPress {colorize('Enter', BOLD)} to open the browser...")
+    print("  Antigravity will launch Google sign-in with account chooser protection:")
+    print(f"  {CYAN}● Incognito / Private Window{RESET} will open to prevent auto-login.")
+    print(f"  {CYAN}● Account Selector forced{RESET} so Google displays the account chooser.")
+    print(f"  ● Please sign into your {BOLD}OTHER / SECOND Google account{RESET}.")
+    print(f"\nPress {colorize('Enter', BOLD)} to begin sign-in...")
 
     try:
         input()
@@ -115,18 +134,31 @@ def cmd_add(args: argparse.Namespace):
         print("\nAborted.")
         return
 
-    # Run agy in profile's environment to trigger OAuth onboarding
-    core.run_profile_command(name, ["agy"], stream_output=True)
+    # Run agy with our OAuth interceptor to force account selection & incognito mode
+    core.run_profile_command(name, ["agy"], stream_output=True, use_interceptor=True)
 
     print_step(3, 3, "Verifying Credentials")
     core.update_profile_info(name)
     meta = core.inspect_token_file(token_file)
 
     if meta.status != TokenStatus.MISSING and meta.email != "None":
-        print(colorize(f"\n✔ Successfully authenticated as: {meta.email}", GREEN + BOLD))
-        print(f"✔ Ready for simultaneous use! Launch anytime via: {colorize('agy @' + name, CYAN + BOLD)}")
+        # Check if the user accidentally signed in with an already configured account
+        other_profiles = [p for p in core.list_profiles() if p["name"] != name and p["email"] not in ("None", "Unknown", "Error")]
+        matching_profile = next((p for p in other_profiles if p["email"].lower() == meta.email.lower()), None)
+
+        if matching_profile:
+            print(colorize(f"\n⚠ Warning: Authenticated as '{meta.email}', which is ALREADY used by profile '{matching_profile['name']}'!", YELLOW + BOLD))
+            print("Your browser automatically signed into your existing Google account instead of your other account.")
+            print("\nTo fix this and authenticate your other Google account:")
+            print(f"  1. Delete this profile:  {CYAN}agm rm {name}{RESET}")
+            print(f"  2. Re-add and paste the OAuth URL into an Incognito window: {CYAN}agm add {name}{RESET}")
+            print(f"  3. Make sure to click 'Use another account' on Google's sign-in screen.\n")
+        else:
+            print(colorize(f"\n✔ Successfully authenticated as: {meta.email}", GREEN + BOLD))
+            print(f"✔ Ready for simultaneous use! Launch anytime via: {colorize('agy @' + name, CYAN + BOLD)}\n")
     else:
         print(colorize(f"\nAuthentication incomplete. Run `agm run {name}` to complete login.", YELLOW + BOLD))
+
 
 
 def cmd_run(args: argparse.Namespace, extra_args: List[str]):
@@ -277,8 +309,10 @@ def main():
     sub_add = subparsers.add_parser("add", help="Add a new Google account profile")
     sub_add.add_argument("name", help="Unique name/alias for this profile (e.g., work, personal, bot)")
     sub_add.add_argument("--copy-from", help="Copy credentials from an existing profile")
+    sub_add.add_argument("--token-file", help="Import an existing antigravity-oauth-token file directly")
     sub_add.add_argument("--no-login", action="store_true", help="Create profile environment without launching OAuth")
     sub_add.set_defaults(func=cmd_add)
+
 
     # run
     sub_run = subparsers.add_parser("run", help="Run agy under a specific account profile")
